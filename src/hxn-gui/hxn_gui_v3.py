@@ -1129,6 +1129,9 @@ class Ui(QtWidgets.QMainWindow):
                 self.dwell.setValue(valsToFill[4])
 
     def quit_scan(self):
+        if OFFLINE_MODE:
+            self.statusbar.showMessage("Offline scan stopped")
+            return
         
         RE.request_pause(True)
         QtTest.QTest.qWait(5000)
@@ -2522,6 +2525,9 @@ class Ui(QtWidgets.QMainWindow):
 
     def closeEvent(self,event):
         reply = QMessageBox.question(self, 'Quit GUI', "Are you sure you want to close the window?")
+        if OFFLINE_MODE and reply == QMessageBox.Yes:
+            event.accept()
+            return
         if reply == QMessageBox.Yes and RE.state == "idle":
 
             event.accept()
