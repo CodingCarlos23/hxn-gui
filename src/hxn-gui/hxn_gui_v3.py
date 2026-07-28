@@ -65,6 +65,7 @@ class Ui(QtWidgets.QMainWindow):
         # Load .ui file directly (recommended for rapid iteration)
         uic.loadUi(ui_file_path, self)
         print("UI File loaded")
+        self.enable_scrolling_on_small_screens()
         
         # Fallback: Use compiled UI with multiple inheritance
         # from ui_files.hxn_gui_v3_ui import Ui_window
@@ -199,6 +200,31 @@ class Ui(QtWidgets.QMainWindow):
         QApplication.processEvents()
         print("GUI initialization complete!")
         print("Window should be visible and responsive now")
+
+    def enable_scrolling_on_small_screens(self):
+        """Keep the designed layout on large displays and scroll it on small ones."""
+        screen = QtWidgets.QApplication.primaryScreen()
+        content = self.centralWidget()
+        if screen is None or content is None:
+            return
+
+        designed_size = self.size()
+        available_size = screen.availableGeometry().size()
+        if (designed_size.width() <= available_size.width()
+                and designed_size.height() <= available_size.height()):
+            return
+
+        # Retain the Designer layout at its intended size, but make it
+        # reachable through the usual scroll bars when the display is smaller.
+        content = self.takeCentralWidget()
+        content.setMinimumSize(designed_size)
+        scroll_area = QtWidgets.QScrollArea(self)
+        scroll_area.setWidget(content)
+        scroll_area.setWidgetResizable(False)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.setCentralWidget(scroll_area)
+        self.resize(designed_size.boundedTo(available_size))
     
     def _start_background_threads(self):
         """Start background threads after GUI is fully loaded"""
