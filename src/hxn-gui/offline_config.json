@@ -1,0 +1,5 @@
+{
+  "roi_elems": ["Si", "Fe"],
+  "live_plot_elems": ["Si", "Fe"],
+  "line_plot_elem": ["Si"]
+}

@@ -39,6 +39,15 @@ from utilities import *
 from element_lines import *
 from mll_tomo_gui import *
 # from ui_files.hxn_gui_v3_ui import Ui_window  # Import compiled UI (fallback)
+
+# A normal local Python process does not have the HXN beamline's Bluesky
+# startup namespace.  Load harmless stand-ins when this GUI is launched via
+# `python hxn_gui_v3.py --offline`.
+OFFLINE_MODE = "--offline" in sys.argv
+if OFFLINE_MODE:
+    from offline_config import *
+
+# from ui_files.hxn_gui_v3_ui import Ui_window  # Import compiled UI (fallback)
 ui_path = os.path.dirname(os.path.abspath(__file__))
 ui_file_path = os.path.join(ui_path, 'ui_files', 'hxn_gui_v3.ui')
 style_path = os.path.join(os.path.dirname(ui_path),'uswds_style.qss')
@@ -70,6 +79,10 @@ class Ui(QtWidgets.QMainWindow):
             'pump_update': True,
             'flytube_pressure': True
         }
+        if OFFLINE_MODE:
+            # Background workers poll EPICS process variables and must not run
+            # on a development machine.
+            self.thread_settings = dict.fromkeys(self.thread_settings, False)
         print(f"Thread settings: {self.thread_settings}")
         # with open(style_path, "r") as f:
         #     self.setStyleSheet(f.read())
@@ -575,7 +588,11 @@ class Ui(QtWidgets.QMainWindow):
     def import_xrf_elem_list(self, auto = False):
 
         if auto:
-             json_param_file = "/nsls2/data/hxn/shared/config/bluesky/profile_collection/startup/plot_elems.json"
+             json_param_file = (
+                 os.path.join(ui_path, "offline_config.json")
+                 if OFFLINE_MODE
+                 else "/nsls2/data/hxn/shared/config/bluesky/profile_collection/startup/plot_elems.json"
+             )
 
         else:
             # Open a file dialog to select a JSON file
