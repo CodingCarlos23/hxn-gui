@@ -340,7 +340,7 @@ class Ui(QtWidgets.QMainWindow):
             )
         else:
             self.automap_widget = create_automap_widget(parent=self.tab_automap)
-            self.automap_layout.addWidget(self.automap_widget)
+            self.automap_layout.addWidget(self.automap_widget, alignment=Qt.AlignTop)
 
     def _install_automap(self):
         source_dir = Path(__file__).resolve().parents[3] / "X-AutoMap-HXN"
