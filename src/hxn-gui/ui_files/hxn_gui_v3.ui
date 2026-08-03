@@ -10610,6 +10610,11 @@ Move
           </property>
          </widget>
         </widget>
+        <widget class="QWidget" name="tab_automap">
+         <attribute name="title">
+          <string>X-AutoMap</string>
+         </attribute>
+        </widget>
         <widget class="QWidget" name="tab_3">
          <attribute name="title">
           <string>Log</string>

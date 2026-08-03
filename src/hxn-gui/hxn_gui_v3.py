@@ -13,6 +13,9 @@ import re
 import sys
 import traceback
 import logging
+import importlib
+import subprocess
+from pathlib import Path
 
 # basic logger functionality
 log = logging.getLogger(__name__)
@@ -55,6 +58,78 @@ det_and_camera_names_motion = ['cam11','merlin','eiger']
 det_and_camera_names_data = ['cam11','merlin1','merlin2','eiger1']
 
 
+class AutoMapInstallThread(QThread):
+    """Install the sibling AutoMap package without blocking the HXN GUI."""
+
+    completed = pyqtSignal(bool, str)
+
+    def __init__(self, source_dir):
+        super().__init__()
+        self.source_dir = Path(source_dir)
+
+    def run(self):
+        if not self.source_dir.is_dir():
+            self.completed.emit(False, f"AutoMap source checkout was not found at {self.source_dir}.")
+            return
+
+        pip_check = subprocess.run(
+            [sys.executable, "-m", "pip", "--version"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        if pip_check.returncode:
+            bootstrap = subprocess.run(
+                [sys.executable, "-m", "ensurepip", "--upgrade"],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                check=False,
+            )
+            if bootstrap.returncode:
+                last_line = next(
+                    (line for line in reversed(bootstrap.stdout.splitlines()) if line.strip()),
+                    "Python could not bootstrap pip.",
+                )
+                self.completed.emit(False, f"AutoMap installation failed: {last_line}")
+                return
+
+        command = [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            "--no-input",
+            "--no-build-isolation",
+            "--editable",
+            str(self.source_dir),
+        ]
+        try:
+            result = subprocess.run(
+                command,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=300,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            self.completed.emit(False, f"AutoMap installation could not start: {error}")
+            return
+
+        if result.returncode:
+            last_line = next(
+                (line for line in reversed(result.stdout.splitlines()) if line.strip()),
+                "pip exited without an error message.",
+            )
+            self.completed.emit(False, f"AutoMap installation failed: {last_line}")
+            return
+
+        self.completed.emit(True, "")
+
+
 # class Ui(QtWidgets.QMainWindow, Ui_window):  # Multiple inheritance with compiled UI (fallback)
 class Ui(QtWidgets.QMainWindow):
 
@@ -66,6 +141,7 @@ class Ui(QtWidgets.QMainWindow):
         uic.loadUi(ui_file_path, self)
         print("UI File loaded")
         self.enable_scrolling_on_small_screens()
+        self.setup_automap_tab()
         
         # Fallback: Use compiled UI with multiple inheritance
         # from ui_files.hxn_gui_v3_ui import Ui_window
@@ -225,6 +301,94 @@ class Ui(QtWidgets.QMainWindow):
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.setCentralWidget(scroll_area)
         self.resize(designed_size.boundedTo(available_size))
+
+    def setup_automap_tab(self):
+        """Load AutoMap, installing the sibling package on first use if needed."""
+        automap_tab = getattr(self, "tab_automap", None)
+        if automap_tab is None:
+            log.warning("The X-AutoMap tab is not present in the loaded UI.")
+            return
+
+        layout = QtWidgets.QVBoxLayout(automap_tab)
+        layout.setContentsMargins(18, 18, 18, 18)
+        self.automap_layout = layout
+        self.automap_install_attempted = False
+        self._load_automap_or_install()
+
+    def _load_automap_or_install(self):
+        """Embed AutoMap when available, otherwise install it from its sibling checkout."""
+        self._clear_automap_layout()
+
+        try:
+            from automap_hxn.gui import create_automap_widget
+        except ModuleNotFoundError as error:
+            if self.automap_install_attempted:
+                self._show_automap_unavailable(
+                    self.automap_layout,
+                    "X-AutoMap library not found",
+                    f"A required AutoMap dependency is unavailable: {error.name}",
+                )
+            else:
+                log.info("AutoMap import is unavailable (%s); attempting installation.", error.name)
+                self._install_automap()
+        except Exception as error:
+            log.exception("AutoMap failed during import")
+            self._show_automap_unavailable(
+                self.automap_layout,
+                "X-AutoMap could not load",
+                f"See the HXN GUI log for details. ({error})",
+            )
+        else:
+            self.automap_widget = create_automap_widget(parent=self.tab_automap)
+            self.automap_layout.addWidget(self.automap_widget)
+
+    def _install_automap(self):
+        source_dir = Path(__file__).resolve().parents[3] / "X-AutoMap-HXN"
+        self.automap_install_attempted = True
+        self._show_automap_unavailable(
+            self.automap_layout,
+            "Preparing X-AutoMap",
+            "Installing the local X-AutoMap-HXN package and its dependencies…",
+        )
+        self.automap_install_thread = AutoMapInstallThread(source_dir)
+        self.automap_install_thread.completed.connect(self._automap_install_finished)
+        self.automap_install_thread.start()
+
+    def _automap_install_finished(self, installed, detail):
+        if not installed:
+            log.warning(detail)
+            self._clear_automap_layout()
+            self._show_automap_unavailable(
+                self.automap_layout,
+                "X-AutoMap library not found",
+                detail,
+            )
+            return
+
+        source_package_dir = Path(__file__).resolve().parents[3] / "X-AutoMap-HXN" / "src"
+        if str(source_package_dir) not in sys.path:
+            # Editable-install .pth files are read only when Python starts.
+            # Add the local source now so this already-running GUI can retry.
+            sys.path.insert(0, str(source_package_dir))
+        importlib.invalidate_caches()
+        self._load_automap_or_install()
+
+    def _clear_automap_layout(self):
+        while self.automap_layout.count():
+            item = self.automap_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    @staticmethod
+    def _show_automap_unavailable(layout, title, detail):
+        title_label = QtWidgets.QLabel(title)
+        title_label.setStyleSheet("font-size: 18px; font-weight: bold;")
+        detail_label = QtWidgets.QLabel(detail)
+        detail_label.setWordWrap(True)
+        layout.addWidget(title_label)
+        layout.addWidget(detail_label)
+        layout.addStretch()
     
     def _start_background_threads(self):
         """Start background threads after GUI is fully loaded"""
