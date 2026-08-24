@@ -316,11 +316,11 @@ class Ui(QtWidgets.QMainWindow):
         self._load_automap_or_install()
 
     def _load_automap_or_install(self):
-        """Embed AutoMap when available, otherwise install it from its sibling checkout."""
+        """Embed JSON Maker when available, otherwise install the package from its sibling checkout."""
         self._clear_automap_layout()
 
         try:
-            from automap_hxn.gui import create_automap_widget
+            from automap_hxn.json_maker import JSONMakerWidget
         except ModuleNotFoundError as error:
             if self.automap_install_attempted:
                 self._show_automap_unavailable(
@@ -339,8 +339,18 @@ class Ui(QtWidgets.QMainWindow):
                 f"See the HXN GUI log for details. ({error})",
             )
         else:
-            self.automap_widget = create_automap_widget(parent=self.tab_automap)
-            self.automap_layout.addWidget(self.automap_widget, alignment=Qt.AlignTop)
+            sub_tabs = QtWidgets.QTabWidget()
+
+            self.automap_widget = JSONMakerWidget()
+            sub_tabs.addTab(self.automap_widget, "JSON Maker")
+
+            try:
+                from automap_hxn.coarse_scan_widget import CoarseScanWidget
+                sub_tabs.addTab(CoarseScanWidget(), "Coarse Scan")
+            except Exception:
+                sub_tabs.addTab(QtWidgets.QWidget(), "Coarse Scan")
+
+            self.automap_layout.addWidget(sub_tabs)
 
     def _install_automap(self):
         source_dir = Path(__file__).resolve().parents[3] / "X-AutoMap-HXN"
@@ -389,7 +399,7 @@ class Ui(QtWidgets.QMainWindow):
         layout.addWidget(title_label)
         layout.addWidget(detail_label)
         layout.addStretch()
-    
+
     def _start_background_threads(self):
         """Start background threads after GUI is fully loaded"""
         print("Starting background threads (based on user settings)...")
