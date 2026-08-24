@@ -346,9 +346,21 @@ class Ui(QtWidgets.QMainWindow):
 
             try:
                 from automap_hxn.coarse_scan_widget import CoarseScanWidget
-                sub_tabs.addTab(CoarseScanWidget(), "Coarse Scan")
+                coarse_widget = CoarseScanWidget()
+                sub_tabs.addTab(coarse_widget, "Mosaic Scan")
             except Exception:
-                sub_tabs.addTab(QtWidgets.QWidget(), "Coarse Scan")
+                coarse_widget = None
+                sub_tabs.addTab(QtWidgets.QWidget(), "Mosaic Scan")
+
+            # Log tab — scrollable, read-only event history
+            self._automap_log = QtWidgets.QPlainTextEdit()
+            self._automap_log.setReadOnly(True)
+            self._automap_log.setPlaceholderText("Scan events will appear here.")
+            self._automap_log.setStyleSheet("font-family: monospace; font-size: 11px;")
+            sub_tabs.addTab(self._automap_log, "Log")
+
+            if coarse_widget is not None:
+                coarse_widget.log_message.connect(self._append_automap_log)
 
             self.automap_layout.addWidget(sub_tabs)
 
@@ -389,6 +401,12 @@ class Ui(QtWidgets.QMainWindow):
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
+
+    def _append_automap_log(self, message):
+        self._automap_log.appendPlainText(message)
+        self._automap_log.verticalScrollBar().setValue(
+            self._automap_log.verticalScrollBar().maximum()
+        )
 
     @staticmethod
     def _show_automap_unavailable(layout, title, detail):
